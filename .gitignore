@@ -1,0 +1,6 @@
+.env
+sentinel-what-broke.md
+__pycache__/
+*.pyc
+.venv/
+.ipynb_checkpoints/
