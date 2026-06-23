@@ -9,8 +9,8 @@ from pipeline.silver import checks
 
 log = get_logger("silver.validate")
 
-SILVER_TABLE = "silver.silver_transactions"
-DEADLETTER_TABLE = "silver.silver_deadletter"
+SILVER_PATH = "abfss://silver@sentinelstgrk1.dfs.core.windows.net/silver_transactions"
+DEADLETTER_PATH = "abfss://silver@sentinelstgrk1.dfs.core.windows.net/silver_deadletter"
 
 BUSINESS_FIELDS = [
     "transaction_id", "customer_id", "account_no", "counterparty_account",
@@ -45,11 +45,11 @@ def route_deadletter(failed_df: DataFrame) -> int:
     )
     count = dlq.count()
     if count:
-        dlq.write.format("delta").mode("append").saveAsTable(DEADLETTER_TABLE)
+        dlq.write.format("delta").mode("append").save(DEADLETTER_PATH)
     return count
 
 
-def merge_silver(passed_df: DataFrame) -> None:
+def merge_silver(spark: SparkSession, passed_df: DataFrame) -> None:
     prepared = (
         passed_df
         .select(*BUSINESS_FIELDS)
@@ -60,7 +60,12 @@ def merge_silver(passed_df: DataFrame) -> None:
         .dropDuplicates(["transaction_id", "change_ts"])
     )
 
-    target = DeltaTable.forName(prepared.sparkSession, SILVER_TABLE)
+    # initialise the table on first run - subsequent runs find it and merge
+    if not DeltaTable.isDeltaTable(spark, SILVER_PATH):
+        prepared.write.format("delta").save(SILVER_PATH)
+        return
+
+    target = DeltaTable.forPath(spark, SILVER_PATH)
 
     # match on natural key plus the cdc sequence key - a row that is already
     # present is left untouched, so re-running yesterday's batch is a no-op and
@@ -84,7 +89,7 @@ def run(spark: SparkSession, bronze_df: DataFrame) -> dict:
 
     rows_passed = passed.count()
     rows_deadlettered = route_deadletter(failed)
-    merge_silver(passed)
+    merge_silver(spark, passed)
 
     stats = {
         "rows_in": rows_in,
