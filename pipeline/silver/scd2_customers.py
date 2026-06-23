@@ -7,7 +7,7 @@ from pipeline.common.logging_config import get_logger
 
 log = get_logger("silver.scd2")
 
-DIM_TABLE = "silver.dim_customers"
+DIM_PATH = "abfss://silver@sentinelstgrk1.dfs.core.windows.net/dim_customers"
 
 # only identity and risk attributes drive a new version - account_open_date is
 # immutable once set and is never a versioning trigger
@@ -75,9 +75,14 @@ def _effective_changes(spark: SparkSession, latest: DataFrame) -> DataFrame:
 
 
 def _assign_surrogate_keys(spark: SparkSession, df: DataFrame) -> DataFrame:
-    current_max = (
-        spark.table(DIM_TABLE).agg(F.max("customer_sk")).collect()[0][0] or 0
-    )
+    # read current max sk only if the table already exists
+    if DeltaTable.isDeltaTable(spark, DIM_PATH):
+        current_max = (
+            spark.read.format("delta").load(DIM_PATH)
+            .agg(F.max("customer_sk")).collect()[0][0] or 0
+        )
+    else:
+        current_max = 0
     w = Window.orderBy("customer_id", "change_ts")
     return df.withColumn(
         "customer_sk", F.lit(current_max) + F.row_number().over(w)
@@ -85,7 +90,9 @@ def _assign_surrogate_keys(spark: SparkSession, df: DataFrame) -> DataFrame:
 
 
 def _close_superseded(spark: SparkSession, latest: DataFrame) -> None:
-    target = DeltaTable.forName(spark, DIM_TABLE)
+    if not DeltaTable.isDeltaTable(spark, DIM_PATH):
+        return
+    target = DeltaTable.forPath(spark, DIM_PATH)
     # the change_ts > effective_start predicate is the out-of-order guard - a late
     # arriving older event cannot close a row that already reflects newer state
     (
@@ -108,7 +115,18 @@ def _close_superseded(spark: SparkSession, latest: DataFrame) -> None:
 
 
 def _insert_new_versions(spark: SparkSession, new_versions: DataFrame) -> None:
-    target = DeltaTable.forName(spark, DIM_TABLE)
+    if not DeltaTable.isDeltaTable(spark, DIM_PATH):
+        # first run - write the initial versions directly
+        new_versions.select(
+            "customer_sk", "customer_id", "risk_segment", "home_country",
+            "account_open_date",
+            F.col("change_ts").alias("effective_start"),
+            F.lit(None).cast("timestamp").alias("effective_end"),
+            F.lit(True).alias("is_current"),
+        ).write.format("delta").save(DIM_PATH)
+        return
+
+    target = DeltaTable.forPath(spark, DIM_PATH)
     # matching on (customer_id, effective_start) means a replayed batch finds the
     # version already present and inserts nothing - the second run is a no-op
     (
