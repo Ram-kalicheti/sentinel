@@ -31,8 +31,12 @@ def _latest_per_customer(changes: DataFrame) -> DataFrame:
 def _effective_changes(spark: SparkSession, latest: DataFrame) -> DataFrame:
     # an update whose tracked attributes match the live row is a no-op - filtering
     # it out keeps the dimension from accumulating identical versions
+    if not DeltaTable.isDeltaTable(spark, DIM_PATH):
+        # no existing dimension - all incoming inserts are effective, mutations dropped
+        return latest.filter(F.col("op_type") == "insert")
+
     current = (
-        spark.table(DIM_TABLE)
+        spark.read.format("delta").load(DIM_PATH)
         .filter(F.col("is_current"))
         .select(
             F.col("customer_id").alias("_cur_customer_id"),
