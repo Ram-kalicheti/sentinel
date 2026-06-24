@@ -15,6 +15,12 @@ GOLD_PATH = "abfss://gold@sentinelstgrk1.dfs.core.windows.net/transaction_enrich
 HOUR_SECONDS = 3600
 THIRTY_DAY_SECONDS = 30 * 24 * 3600
 
+# the 200 default shuffle partition count is sized for cluster-scale data - at dev
+# volume it spawns 200 near-empty tasks whose scheduling overhead dominates the
+# real work, so a small explicit count removes that overhead
+TUNED_SHUFFLE_PARTITIONS = 8
+DEFAULT_SHUFFLE_PARTITIONS = 200
+
 
 def _current_dimension(spark: SparkSession) -> DataFrame:
     # only the open SCD2 version carries the customer's present risk_segment and
@@ -59,7 +65,7 @@ def compute_rolling_features(df: DataFrame) -> DataFrame:
     return df.drop("_ts_sec")
 
 
-def compute_peer_benchmark(df: DataFrame) -> DataFrame:
+def compute_peer_benchmark(df: DataFrame, broadcast_peer: bool = True) -> DataFrame:
     # peer group is the risk_segment cohort - deviation from peers catches a
     # customer behaving unlike others of the same assessed risk
     peer = df.groupBy("risk_segment").agg(
@@ -67,7 +73,10 @@ def compute_peer_benchmark(df: DataFrame) -> DataFrame:
         F.stddev("amount").alias("_peer_std"),
     )
 
-    df = df.join(peer, "risk_segment", "left")
+    # the peer table is one row per risk_segment - broadcasting it sends that tiny
+    # frame to every executor and turns a shuffle join into a map-side join
+    peer_side = F.broadcast(peer) if broadcast_peer else peer
+    df = df.join(peer_side, "risk_segment", "left")
     df = df.withColumn(
         "peer_deviation",
         F.when(
@@ -78,16 +87,20 @@ def compute_peer_benchmark(df: DataFrame) -> DataFrame:
     return df.drop("_peer_mean", "_peer_std")
 
 
-def enrich(spark: SparkSession) -> DataFrame:
+def enrich(spark: SparkSession, broadcast_dim: bool = True) -> DataFrame:
     silver = spark.read.format("delta").load(SILVER_PATH)
     dim = _current_dimension(spark)
 
+    # dim_customers is small relative to the fact stream - broadcasting it avoids
+    # shuffling the whole transaction set across the network to align join keys
+    dim_side = F.broadcast(dim) if broadcast_dim else dim
+
     # attach customer_sk + risk_segment before feature work so peer grouping and
     # the gold grain both have the dimension context
-    joined = silver.join(dim, "customer_id", "left")
+    joined = silver.join(dim_side, "customer_id", "left")
 
     enriched = compute_rolling_features(joined)
-    enriched = compute_peer_benchmark(enriched)
+    enriched = compute_peer_benchmark(enriched, broadcast_peer=broadcast_dim)
 
     return enriched.select(
         "transaction_id", "customer_sk", "customer_id", "risk_segment",
@@ -98,8 +111,16 @@ def enrich(spark: SparkSession) -> DataFrame:
     )
 
 
-def run(spark: SparkSession) -> dict:
-    enriched = enrich(spark)
+def run(spark: SparkSession, tuned: bool = True) -> dict:
+    # the tuned path right-sizes shuffle partitions and broadcasts the small
+    # joins; the untuned path is the platform default, kept so the timing
+    # comparison measures a real before and after
+    spark.conf.set(
+        "spark.sql.shuffle.partitions",
+        str(TUNED_SHUFFLE_PARTITIONS if tuned else DEFAULT_SHUFFLE_PARTITIONS),
+    )
+
+    enriched = enrich(spark, broadcast_dim=tuned)
     # gold is a full rebuild from silver each run - overwrite keeps it a pure
     # function of current silver state and avoids stale feature rows
     enriched.write.format("delta").mode("overwrite") \
