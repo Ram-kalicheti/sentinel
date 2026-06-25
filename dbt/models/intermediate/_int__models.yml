@@ -1,0 +1,17 @@
+version: 2
+
+models:
+  - name: int_transaction_trends
+    description: >
+      Row-grain enriched transactions, incremental (merge on transaction_id + change_ts).
+      Adds per-row derived features and the current customer risk_segment. Rolling/window
+      "trend" features are deferred to the Day 5 mart for incremental correctness.
+    columns:
+      - name: transaction_id
+        description: Part of the merge key.
+      - name: change_ts
+        description: Part of the merge key (CDC ordering).
+      - name: customer_sk
+        description: Surrogate from dim_customers (is_current). Null for closed/deleted customers.
+      - name: is_cross_border
+        description: True when transaction geo_country differs from the customer's home_country.
