@@ -1,0 +1,14 @@
+version: 2
+
+models:
+  - name: stg_transactions
+    description: >
+      Cleaned, typed 1:1 view over the silver_transactions Delta layer.
+      Filters to DQ-passed rows. Source read via Delta path (Hive metastore disabled).
+    columns:
+      - name: transaction_id
+        description: Natural transaction key (UUID).
+      - name: change_ts
+        description: CDC ordering key; part of the idempotent grain (transaction_id + change_ts).
+      - name: _processed_ts
+        description: Silver processing timestamp; used as the incremental watermark downstream.
