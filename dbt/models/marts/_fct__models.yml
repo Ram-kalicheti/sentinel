@@ -1,0 +1,27 @@
+version: 2
+
+models:
+  - name: fct_transaction_health
+    description: "governed incremental fact at transaction-event grain; point-in-time dimension join, 1h/30d rolling features, heuristic risk_score pending the registered model"
+    columns:
+      - name: transaction_health_sk
+        description: "surrogate key, md5 of transaction_id and change_ts"
+        tests:
+          - not_null
+          - unique
+      - name: transaction_id
+        tests:
+          - not_null
+      - name: customer_sk
+        description: "point-in-time surrogate key; null only when no dimension version covers txn_ts"
+      - name: channel
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['ach', 'fednow']
+      - name: is_high_value
+        tests:
+          - not_null
+      - name: risk_score
+        tests:
+          - not_null

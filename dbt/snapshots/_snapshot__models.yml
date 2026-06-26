@@ -1,0 +1,12 @@
+version: 2
+
+snapshots:
+  - name: dim_customers_snapshot
+    columns:
+      - name: customer_id
+        tests:
+          - not_null
+      - name: dbt_scd_id
+        tests:
+          - not_null
+          - unique
