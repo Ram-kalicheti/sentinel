@@ -4,21 +4,27 @@ config-version: 2
 profile: 'sentinel'
 
 model-paths: ["models"]
+snapshot-paths: ["snapshots"]
 target-path: "target"
 clean-targets: ["target", "dbt_packages", "logs"]
 
 # Source layers live as path-based Delta on sentinelstgrk1 (Hive metastore is DISABLED,
 # so we read them via  delta.`abfss://...`  rather than catalog.schema.table).
-# >>> CONFIRM these two paths against pipeline/common/config.py before the first run. <<<
+# >>> CONFIRM these three paths against pipeline/common/config.py before the first run. <
 vars:
   silver_transactions_path: "abfss://silver@sentinelstgrk1.dfs.core.windows.net/silver_transactions"
   dim_customers_path: "abfss://silver@sentinelstgrk1.dfs.core.windows.net/dim_customers"
+  customer_master_path: "abfss://silver@sentinelstgrk1.dfs.core.windows.net/customer_master"
 
 models:
   sentinel:
     staging:
       +materialized: view
     intermediate:
+      +materialized: incremental
+      +file_format: delta
+      +incremental_strategy: merge
+    marts:
       +materialized: incremental
       +file_format: delta
       +incremental_strategy: merge
