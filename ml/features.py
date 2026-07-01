@@ -6,7 +6,7 @@ import pandas as pd
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
-from common.logging_config import get_logger
+from pipeline.common.logging_config import get_logger
 
 log = get_logger("ml.features")
 
