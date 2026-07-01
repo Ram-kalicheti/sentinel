@@ -100,18 +100,20 @@ def evaluate(spark: SparkSession) -> dict:
         # the full data fit is the candidate that gets registered whatever the gate then decides
         model.fit(features, label)
         signature = infer_signature(features, model.predict(features))
-        logged = mlflow.xgboost.log_model(
+        mlflow.xgboost.log_model(
             model,
             artifact_path="model",
             signature=signature,
             registered_model_name=REGISTERED_MODEL,
         )
 
-    version = logged.registered_model_version
+    # modelinfo does not expose the version on this mlflow line so read it back from the registry
+    client = MlflowClient()
+    version = max(int(v.version) for v in client.search_model_versions(f"name='{REGISTERED_MODEL}'"))
 
     # registering proves the mechanism but only an earned model takes the serving alias
     if promote:
-        MlflowClient().set_registered_model_alias(REGISTERED_MODEL, CHAMPION_ALIAS, version)
+        client.set_registered_model_alias(REGISTERED_MODEL, CHAMPION_ALIAS, version)
 
     log.info(
         "evaluation complete",
