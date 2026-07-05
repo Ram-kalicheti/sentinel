@@ -8,26 +8,6 @@ The platform is built on a Lambda architecture: a streaming path for low-latency
 
 ![Architecture](docs/screenshots/architecture.png)
 
-```mermaid
-flowchart LR
-  SIM[Transaction simulator] --> EH[Azure Event Hubs]
-  EH --> BRONZE[Bronze Delta raw events]
-  BRONZE --> SILVER[Silver validated SCD2 customer history]
-  SILVER --> DLQ[Silver deadletter]
-  SILVER --> GOLD[Gold enriched features]
-  GOLD --> DBT[dbt marts fct_transaction_health]
-  GOLD --> ML[XGBoost training and MLflow]
-  ML --> WB[Score writeback into mart]
-  WB --> DASH[Databricks SQL dashboard]
-  DBT --> DASH
-  GOLD --> REDIS[Redis online feature store]
-  REDIS --> API[Scorer API]
-  AF[Airflow] --> SILVER
-  AF --> GOLD
-  AF --> DBT
-  UC[Unity Catalog governance] --- SILVER
-  UC --- GOLD
-```
 
 ## Stack
 
