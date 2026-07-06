@@ -103,6 +103,10 @@ A Databricks SQL dashboard serves the fraud queue, SAR candidate list, model qua
 
 ![Fraud intelligence dashboard](docs/screenshots/dashboard-fraud-intelligence-1.png)
 
+![Fraud dashboard - model quality and score distribution](docs/screenshots/dashboard-fraud-intelligence-2.png)
+
+![Fraud dashboard - geographic and cross-border risk](docs/screenshots/dashboard-fraud-intelligence-3.png)
+
 ## Running the project
 
 The streaming pipeline runs on Azure Databricks against live Azure resources (Event Hubs, ADLS Gen2, Unity Catalog), so it is not a single-command local run. The pieces below run locally, and the Databricks-hosted stages are deployed to a workspace.
