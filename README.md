@@ -2,6 +2,10 @@
 
 Real-time financial transaction fraud intelligence platform on Azure Databricks. Sentinel ingests a stream of banking transactions, maintains full customer behavioral history, scores transactions for fraud risk, and serves the results through a low-latency API and a fraud-analyst dashboard.
 
+## Why I built this
+
+At PwC I moved 300k+ employee records a week through batch integrations. Batch is the right tool for reconciliation and reporting, but it means a suspicious transaction is only visible hours after it settles, long after the moment fraud could be stopped. I built Sentinel to learn what real-time fraud detection actually requires at the infrastructure level: streaming ingestion, exactly-once processing, and a scoring path that answers within the payment window rather than the next batch cycle.
+
 The platform is built on a Lambda architecture: a streaming path for low-latency ingestion and scoring, and a batch path for historical aggregation, feature engineering, and model retraining, both unified in Delta Lake on a medallion (bronze, silver, gold) layout.
 
 ## Architecture
